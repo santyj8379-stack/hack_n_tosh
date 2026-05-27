@@ -8,7 +8,7 @@ import base64
 from google import genai
 from google.genai import types
 from supabase import create_client
-from modules import group_1_handlers, group_2_handlers, group_3_handlers
+from modules import group_1_handlers, group_2_handlers, group_3_handlers, group_4_handlers
 
 # ==========================================
 # PLATFORM CORE CONFIGURATIONS
@@ -23,9 +23,9 @@ st.markdown("---")
 # SIDEBAR: Permanent Parameter State
 # ==========================================
 st.sidebar.header("🎯 Target Parameters")
-target_base_url = st.sidebar.text_input("Target Base URL", value="http://natas23.natas.labs.overthewire.org")
-username = st.sidebar.text_input("Username", value="natas23")
-password = st.sidebar.text_input("Password", value="dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs", type="password")
+target_base_url = st.sidebar.text_input("Target Base URL", value="http://natas26.natas.labs.overthewire.org")
+username = st.sidebar.text_input("Username", value="natas26")
+password = st.sidebar.text_input("Password", value="o98Bi9vf9s6Z06xo0Wb0wGB6g9mAd99V", type="password")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🧠 AI Brain Configuration")
@@ -60,7 +60,8 @@ methodology_group = st.selectbox(
     [
         "Group 1: Static Controls & Information Disclosure (Levels 0 - 10)",
         "Group 2: Input Validation & Parameter Control (Levels 11 - 16)",
-        "Group 3: Session Tracking & Header Monitoring (Levels 17 - 25)"
+        "Group 3: Session Tracking & Header Monitoring (Levels 17 - 25)",
+        "Group 4: Advanced Object Injection & Logic Contractions (Levels 26 - 34)"
     ]
 )
 
@@ -69,8 +70,10 @@ if "Group 1" in methodology_group:
     selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(11)])
 elif "Group 2" in methodology_group:
     selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(11, 17)])
-else:
+elif "Group 3" in methodology_group:
     selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(17, 26)])
+else:
+    selected_level = st.selectbox("Select Target Module:", [f"Level {i}" for i in range(26, 35)])
 
 st.markdown(f"Active Status: **{selected_level}** module framework is armed.")
 
@@ -102,6 +105,8 @@ if st.button("🚀 Fire Active Verification Module"):
             group_2_handlers.execute(selected_level, context)
         elif "Group 3" in methodology_group:
             group_3_handlers.execute(selected_level, context)
+        elif "Group 4" in methodology_group:
+            group_4_handlers.execute(selected_level, context)
 
 # ==========================================
 # PROVISION FOR EXTERNAL HELP APPROACH
