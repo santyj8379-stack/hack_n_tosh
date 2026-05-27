@@ -23,9 +23,9 @@ st.markdown("---")
 # SIDEBAR: Permanent Parameter State
 # ==========================================
 st.sidebar.header("🎯 Target Parameters")
-target_base_url = st.sidebar.text_input("Target Base URL", value="http://natas26.natas.labs.overthewire.org")
-username = st.sidebar.text_input("Username", value="natas26")
-password = st.sidebar.text_input("Password", value="ckELKUWZUfPOv6uxS6M7lXBpBssJZ4Ws", type="password")
+target_base_url = st.sidebar.text_input("Target Base URL", value="http://natas23.natas.labs.overthewire.org")
+username = st.sidebar.text_input("Username", value="natas23")
+password = st.sidebar.text_input("Password", value="dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs", type="password")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🧠 AI Brain Configuration")
